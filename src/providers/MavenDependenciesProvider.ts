@@ -1,0 +1,1 @@
+export { MavenDependenciesProvider } from './MavenPluginsProvider';
