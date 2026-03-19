@@ -78,11 +78,11 @@ Type these prefixes in any `pom.xml`:
 
 | Setting | Default | Description |
 |---|---|---|
-| `mavenPolyglot.mavenExecutable` | `mvn` | Maven executable path (auto-detects `mvnw`) |
-| `mavenPolyglot.javaHome` | `""` | Override `JAVA_HOME` |
-| `mavenPolyglot.terminal.useExistingTerminal` | `true` | Reuse Maven terminal |
-| `mavenPolyglot.pomXml.validateOnSave` | `true` | Validate pom.xml on save |
-| `mavenPolyglot.showStatusBar` | `true` | Show Maven status bar item |
+| `gjsMaven.mavenExecutable` | `mvn` | Maven executable path (auto-detects `mvnw`) |
+| `gjsMaven.javaHome` | `""` | Override `JAVA_HOME` |
+| `gjsMaven.terminal.useExistingTerminal` | `true` | Reuse Maven terminal |
+| `gjsMaven.pomXml.validateOnSave` | `true` | Validate pom.xml on save |
+| `gjsMaven.showStatusBar` | `true` | Show Maven status bar item |
 
 ---
 
@@ -90,28 +90,28 @@ Type these prefixes in any `pom.xml`:
 
 ```
 gjs-maven-vscode-extension/
-├── src/
-│   ├── extension.ts                  # Entry point
-│   ├── commands/
-│   │   ├── MavenCommandRunner.ts     # Terminal command execution
-│   │   └── AddDependencyCommand.ts   # Interactive dependency picker
-│   ├── providers/
-│   │   ├── PomXmlCompletionProvider.ts
-│   │   ├── PomXmlHoverProvider.ts
-│   │   ├── PomXmlDiagnosticsProvider.ts
-│   │   ├── MavenProjectsProvider.ts  # Tree view: projects
-│   │   ├── MavenLifecycleProvider.ts # Tree view: lifecycle
-│   │   └── MavenPluginsProvider.ts   # Tree views: plugins + deps
-│   ├── language/
-│   │   └── LanguageSupportManager.ts # Polyglot detection + suggestions
-│   ├── ui/
-│   │   └── MavenStatusBar.ts
-│   └── tasks/
-│       └── MavenTaskProvider.ts      # VS Code tasks integration
-├── snippets/
-│   └── pom-snippets.json
-├── package.json
-└── tsconfig.json
+├ src/
+│   ├ extension.ts                  # Entry point
+│   ├ commands/
+│   │   ├ MavenCommandRunner.ts     # Terminal command execution
+│   │   └ AddDependencyCommand.ts   # Interactive dependency picker
+│   ├ providers/
+│   │   ├ PomXmlCompletionProvider.ts
+│   │   ├ PomXmlHoverProvider.ts
+│   │   ├ PomXmlDiagnosticsProvider.ts
+│   │   ├ MavenProjectsProvider.ts  # Tree view: projects
+│   │   ├ MavenLifecycleProvider.ts # Tree view: lifecycle
+│   │   └ MavenPluginsProvider.ts   # Tree views: plugins + deps
+│   ├ language/
+│   │   └ LanguageSupportManager.ts # Polyglot detection + suggestions
+│   ├ ui/
+│   │   └ MavenStatusBar.ts
+│   └ tasks/
+│       └ MavenTaskProvider.ts      # VS Code tasks integration
+├ snippets/
+│   └ pom-snippets.json
+├ package.json
+└ tsconfig.json
 ```
 
 ---

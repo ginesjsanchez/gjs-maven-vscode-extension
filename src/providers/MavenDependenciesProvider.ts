@@ -1,1 +1,1 @@
-export { MavenDependenciesProvider } from './MavenPluginsProvider';
+export { MavenDependenciesProvider, MavenManagedDependenciesProvider } from './MavenPluginsProvider';

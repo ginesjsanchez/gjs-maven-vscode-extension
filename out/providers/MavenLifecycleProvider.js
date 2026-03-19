@@ -44,9 +44,9 @@ const PHASES = [
     { phase: 'verify', icon: 'verified', description: 'Run integration tests' },
     { phase: 'install', icon: 'desktop-download', description: 'Install to local repository' },
     { phase: 'deploy', icon: 'cloud-upload', description: 'Deploy to remote repository' },
-    { phase: 'clean install', icon: 'play', description: 'Clean then install (most common)' },
-    { phase: 'clean package', icon: 'play', description: 'Clean then package' },
-    { phase: 'dependency:tree', icon: 'type-hierarchy', description: 'Show dependency tree' },
+    { phase: 'clean package', icon: 'play', description: 'Clean and build the package' },
+    { phase: 'clean install', icon: 'play', description: 'Clean, build the package and install' },
+    { phase: 'clean deploy', icon: 'play', description: 'Clean, build the package, install and deploy' },
     { phase: 'site', icon: 'globe', description: 'Generate project site' },
 ];
 class MavenLifecycleProvider {
@@ -68,7 +68,7 @@ class LifecycleItem extends vscode.TreeItem {
         this.description = description;
         this.contextValue = 'mavenGoal';
         this.command = {
-            command: 'gjs-maven-vscode-extension.runCommand',
+            command: 'gjs-maven-vscode-extension.runFromLifecycle',
             title: `Run: ${phase}`,
             arguments: [phase]
         };

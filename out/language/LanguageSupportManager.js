@@ -66,7 +66,7 @@ class LanguageSupportManager {
     async detectLanguages(pomPath) {
         const detected = [];
         const text = fs.readFileSync(pomPath, 'utf8');
-        // ── Language detection from pom.xml content ────────────────────────
+        //  Language detection from pom.xml content 
         if (text.includes('maven-compiler-plugin') ||
             text.includes('<groupId>org.springframework') ||
             /\.(java)/.test(await this.findSourceFiles('**/*.java'))) {

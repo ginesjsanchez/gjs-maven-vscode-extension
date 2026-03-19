@@ -37,80 +37,133 @@ exports.MavenProjectItem = exports.MavenProjectsProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+function parsePom(uri) {
+    const text = fs.readFileSync(uri.fsPath, 'utf8');
+    // Strip nested sections to avoid picking up child coords
+    const stripped = text
+        .replace(/<parent>[\s\S]*?<\/parent>/g, '')
+        .replace(/<dependencies>[\s\S]*?<\/dependencies>/g, '')
+        .replace(/<plugins>[\s\S]*?<\/plugins>/g, '');
+    const artifactId = (stripped.match(/<artifactId>([^<]+)/) || [])[1]?.trim() ?? path.basename(path.dirname(uri.fsPath));
+    const groupId = (stripped.match(/<groupId>([^<]+)/) || [])[1]?.trim() ?? '';
+    const version = (stripped.match(/<version>([^<]+)/) || [])[1]?.trim() ?? '';
+    const packaging = (stripped.match(/<packaging>([^<]+)/) || [])[1]?.trim() ?? 'jar';
+    const modules = [];
+    const modulesMatch = text.match(/<modules>([\s\S]*?)<\/modules>/);
+    if (modulesMatch) {
+        const re = /<module>([^<]+)<\/module>/g;
+        let m;
+        while ((m = re.exec(modulesMatch[1])) !== null) {
+            modules.push(m[1].trim());
+        }
+    }
+    return { uri, artifactId, groupId, version, packaging, modules };
+}
 class MavenProjectsProvider {
     constructor() {
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        this.pomMap = new Map(); // fsPath -> PomInfo
+        this.roots = [];
     }
-    refresh() { this._onDidChangeTreeData.fire(); }
-    async getChildren(element) {
-        if (!element) {
-            // Root: find all pom.xml files
-            const poms = await vscode.workspace.findFiles('**/pom.xml', '**/node_modules/**', 50);
-            return poms.map(uri => new MavenProjectItem(uri));
-        }
-        // Children: show groupId, artifactId, version from pom
-        return element.getDetails();
+    refresh() {
+        this.pomMap.clear();
+        this.roots = [];
+        this._onDidChangeTreeData.fire();
     }
     getTreeItem(element) { return element; }
-}
-exports.MavenProjectsProvider = MavenProjectsProvider;
-class MavenProjectItem extends vscode.TreeItem {
-    constructor(pomUri) {
-        const rel = vscode.workspace.asRelativePath(pomUri);
-        const dir = path.dirname(rel);
-        super(dir === '.' ? 'Root Project' : dir, vscode.TreeItemCollapsibleState.Collapsed);
-        this.pomUri = pomUri;
-        this.resourceUri = pomUri;
-        this.contextValue = 'mavenProject';
-        this.iconPath = new vscode.ThemeIcon('package');
-        this.tooltip = pomUri.fsPath;
-        this.command = {
-            command: 'vscode.open',
-            title: 'Open pom.xml',
-            arguments: [pomUri]
-        };
-        // Parse name from pom
-        try {
-            const text = fs.readFileSync(pomUri.fsPath, 'utf8');
-            const artifactId = (text.match(/<artifactId>([^<]+)<\/artifactId>/) || [])[1];
-            const version = (text.match(/<version>([^<]+)<\/version>/) || [])[1];
-            if (artifactId) {
-                this.label = artifactId;
-                this.description = version ?? '';
-            }
+    async getChildren(element) {
+        if (!element) {
+            await this.buildTree();
+            return this.roots.map(p => new MavenProjectItem(p, true));
         }
-        catch { /* ignore */ }
-    }
-    async getDetails() {
-        try {
-            const text = fs.readFileSync(this.pomUri.fsPath, 'utf8');
+        if (element.type === 'project') {
+            const pom = this.pomMap.get(element.pomInfo.uri.fsPath);
+            if (!pom) {
+                return [];
+            }
             const items = [];
-            const fields = [
-                ['groupId', 'symbol-namespace'],
-                ['artifactId', 'symbol-class'],
-                ['version', 'tag'],
-                ['packaging', 'archive'],
-            ];
-            for (const [field, icon] of fields) {
-                const val = (text.match(new RegExp(`<${field}>([^<]+)<\/${field}>`)) || [])[1];
-                if (val) {
-                    items.push(new DetailItem(`${field}: ${val}`, icon));
+            // Details
+            items.push(new MavenProjectItem(pom, false, `groupId: ${pom.groupId}`, 'symbol-namespace'));
+            items.push(new MavenProjectItem(pom, false, `version: ${pom.version}`, 'tag'));
+            items.push(new MavenProjectItem(pom, false, `packaging: ${pom.packaging}`, 'archive'));
+            // Child modules
+            for (const mod of pom.modules) {
+                const modPomPath = path.join(path.dirname(pom.uri.fsPath), mod, 'pom.xml');
+                const childPom = this.pomMap.get(modPomPath);
+                if (childPom) {
+                    items.push(new MavenProjectItem(childPom, true));
                 }
             }
             return items;
         }
-        catch {
-            return [];
+        return [];
+    }
+    async buildTree() {
+        const uris = await vscode.workspace.findFiles('**/pom.xml', '{**/node_modules/**,**/target/**,**/archetype-resources/**}', 50);
+        for (const uri of uris) {
+            try {
+                const info = parsePom(uri);
+                this.pomMap.set(uri.fsPath, info);
+            }
+            catch { /* skip unreadable */ }
+        }
+        // Determine roots: poms that are not a module of another pom
+        const childPaths = new Set();
+        for (const pom of this.pomMap.values()) {
+            for (const mod of pom.modules) {
+                const childPath = path.join(path.dirname(pom.uri.fsPath), mod, 'pom.xml');
+                childPaths.add(childPath);
+            }
+        }
+        this.roots = [];
+        for (const pom of this.pomMap.values()) {
+            if (!childPaths.has(pom.uri.fsPath)) {
+                this.roots.push(pom);
+            }
+        }
+        // Sort roots by artifactId
+        this.roots.sort((a, b) => a.artifactId.localeCompare(b.artifactId));
+    }
+}
+exports.MavenProjectsProvider = MavenProjectsProvider;
+class MavenProjectItem extends vscode.TreeItem {
+    constructor(pomInfo, isProject, detailLabel, detailIcon) {
+        super(isProject ? pomInfo.artifactId : (detailLabel ?? ''), vscode.TreeItemCollapsibleState.Collapsed);
+        this.pomInfo = pomInfo;
+        if (isProject) {
+            this.type = 'project';
+            this.description = pomInfo.version;
+            this.tooltip = `${pomInfo.groupId}:${pomInfo.artifactId}:${pomInfo.version}`;
+            this.iconPath = this.resolveIcon(pomInfo.packaging, pomInfo.modules.length > 0);
+            this.contextValue = 'mavenProject';
+            this.command = {
+                command: 'vscode.open',
+                title: 'Open pom.xml',
+                arguments: [pomInfo.uri]
+            };
+        }
+        else {
+            this.type = 'detail';
+            this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+            this.iconPath = new vscode.ThemeIcon(detailIcon ?? 'info');
+            this.contextValue = 'mavenDetail';
+        }
+    }
+    resolveIcon(packaging, hasModules) {
+        if (packaging === 'pom' && hasModules) {
+            return new vscode.ThemeIcon('folder-library');
+        }
+        else if (packaging === 'pom') {
+            return new vscode.ThemeIcon('type-hierarchy');
+        }
+        else if (packaging === 'maven-archetype') {
+            return new vscode.ThemeIcon('symbol-structure');
+        }
+        else {
+            return new vscode.ThemeIcon('package');
         }
     }
 }
 exports.MavenProjectItem = MavenProjectItem;
-class DetailItem extends vscode.TreeItem {
-    constructor(label, icon) {
-        super(label, vscode.TreeItemCollapsibleState.None);
-        this.iconPath = new vscode.ThemeIcon(icon);
-        this.contextValue = 'mavenDetail';
-    }
-}
 //# sourceMappingURL=MavenProjectsProvider.js.map

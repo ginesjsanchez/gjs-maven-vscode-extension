@@ -36,7 +36,7 @@ export class LanguageSupportManager {
         const detected: string[] = [];
         const text = fs.readFileSync(pomPath, 'utf8');
 
-        // ── Language detection from pom.xml content ────────────────────────
+        //  Language detection from pom.xml content 
         if (
             text.includes('maven-compiler-plugin') ||
             text.includes('<groupId>org.springframework') ||

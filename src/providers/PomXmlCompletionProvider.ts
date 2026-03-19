@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-// ── Completion data ────────────────────────────────────────────────────────────
+//  Completion data 
 
 const LIFECYCLE_PHASES = [
     'validate','initialize','generate-sources','process-sources','generate-resources',
@@ -42,7 +42,7 @@ const WELL_KNOWN_PLUGINS = [
     { groupId: 'org.graalvm.buildtools', artifactId: 'native-maven-plugin', version: '0.10.0' },
 ];
 
-// ── Provider ───────────────────────────────────────────────────────────────────
+//  Provider 
 
 export class PomXmlCompletionProvider implements vscode.CompletionItemProvider {
 
@@ -54,7 +54,7 @@ export class PomXmlCompletionProvider implements vscode.CompletionItemProvider {
         const textBefore = lineText.substring(0, position.character);
         const context = this.getXmlContext(document, position);
 
-        // ── <scope> ──────────────────────────────────────────────────────────
+        //  <scope> 
         if (this.isInsideTag(textBefore, 'scope')) {
             return SCOPES.map(s => {
                 const item = new vscode.CompletionItem(s, vscode.CompletionItemKind.EnumMember);
@@ -64,7 +64,7 @@ export class PomXmlCompletionProvider implements vscode.CompletionItemProvider {
             });
         }
 
-        // ── <packaging> ──────────────────────────────────────────────────────
+        //  <packaging> 
         if (this.isInsideTag(textBefore, 'packaging')) {
             return PACKAGING_TYPES.map(p => {
                 const item = new vscode.CompletionItem(p, vscode.CompletionItemKind.EnumMember);
@@ -73,7 +73,7 @@ export class PomXmlCompletionProvider implements vscode.CompletionItemProvider {
             });
         }
 
-        // ── <phase> ─────────────────────────────────────────────────────────
+        //  <phase> 
         if (this.isInsideTag(textBefore, 'phase')) {
             return LIFECYCLE_PHASES.map(ph => {
                 const item = new vscode.CompletionItem(ph, vscode.CompletionItemKind.EnumMember);
@@ -82,17 +82,17 @@ export class PomXmlCompletionProvider implements vscode.CompletionItemProvider {
             });
         }
 
-        // ── Inside <properties> ─────────────────────────────────────────────
+        //  Inside <properties> 
         if (context.includes('properties')) {
             return this.getPropertyCompletions();
         }
 
-        // ── Inside <plugins> ────────────────────────────────────────────────
+        //  Inside <plugins> 
         if (context.includes('plugin')) {
             return this.getPluginCompletions(document, position, textBefore);
         }
 
-        // ── Top-level element completions ────────────────────────────────────
+        //  Top-level element completions 
         if (this.isTagOpening(textBefore)) {
             return this.getTopLevelCompletions();
         }
@@ -100,7 +100,7 @@ export class PomXmlCompletionProvider implements vscode.CompletionItemProvider {
         return [];
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    //  Helpers 
 
     private getPropertyCompletions(): vscode.CompletionItem[] {
         return Object.entries(COMMON_PROPERTIES).map(([key, val]) => {
