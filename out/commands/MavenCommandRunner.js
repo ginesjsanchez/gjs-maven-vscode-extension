@@ -151,10 +151,21 @@ class MavenCommandRunner {
                     watcher.close();
                     setTimeout(() => {
                         if (fs.existsSync(outputFile)) {
-                            const text = fs.readFileSync(outputFile, 'utf8');
-                            resolve(text.trim());
+                            const waitForStable = (prevSize) => {
+                                const currentSize = fs.statSync(outputFile).size;
+                                if (currentSize === prevSize && currentSize > 0) {
+                                    // Tamaño estable, ya terminó de escribir
+                                    const text = fs.readFileSync(outputFile, 'utf8');
+                                    resolve(text.trim());
+                                }
+                                else {
+                                    // Sigue cambiando, esperar otro poco
+                                    setTimeout(() => waitForStable(currentSize), 200);
+                                }
+                            };
+                            waitForStable(-1);
                         }
-                    }, 5000);
+                    }, 500); // pequeño delay inicial para que el fichero aparezca
                 }
             });
             setTimeout(() => { watcher.close(); resolve(undefined); }, 30000);

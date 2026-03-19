@@ -3,7 +3,7 @@
   "displayName": "Gjs Maven VS Code Extension",
   "description": "Maven project support for Java, C++, Python and more. Edit pom.xml with intelligence and run Maven commands.",
   "version": "1.0.0",
-  "publisher": "gjs-maven-vscode-extension",
+  "publisher": "GJSoftware",
   "engines": {
     "vscode": "^1.90.0"
   },
