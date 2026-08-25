@@ -26,6 +26,11 @@ import { MavenArchetypeRunner } from './commands/MavenArchetypeRunner';
 import { MavenArchetypesView } from './ui/MavenArchetypesView';
 import { AddPropertyCommand } from './commands/AddPropertyCommand';
 import { MavenPropertiesProvider } from './providers/MavenPropertiesProvider';
+import { MavenUpdateCommand } from './commands/MavenUpdateCommand';
+import { CppPropertiesManager } from './cpp/CppPropertiesManager';
+import { HeaderAssociationManager } from './cpp/HeaderAssociationManager';
+import { ModuleLanguageStatus } from './ui/ModuleLanguageStatus';
+import { ImportJavaModulesCommand } from './commands/ImportJavaModulesCommand';
 
 
 let statusBar: MavenStatusBar;
@@ -67,14 +72,34 @@ export async function activate(context: vscode.ExtensionContext) {
 	const optionsManager = new MavenOptionsManager(context);	
     const commandRunner = new MavenCommandRunner(context, profileManager, optionsManager);
     const evaluator = new MavenEvaluator(commandRunner);
+    const mavenUpdateCommnad = new MavenUpdateCommand(commandRunner);
+
+	// El contexto necesita el evaluador para resolver gjs.source.language heredado
+	MavenProjectContext.setEvaluator(evaluator);
+
+	//  includePath de C/C++ siguiendo al módulo activo
+	const cppProperties = new CppPropertiesManager(context, mavenUpdateCommnad);
+	cppProperties.activate();
+
+	//  Cabeceras de los módulos en C, que VS Code toma por C++ de serie
+	new HeaderAssociationManager(context).activate();
+
+	//  Módulo y lenguaje activos en el panel Editor Language Status
+	new ModuleLanguageStatus(context).activate();
+
+	//  Acotar el servidor de Java a los módulos que son de Java, si hay una
+	//  selección guardada de una vez anterior. Sin ella no hace absolutamente nada.
+	const javaModules = new ImportJavaModulesCommand(commandRunner);
+	javaModules.activate(context);
+
 	const archetypeRunner = new MavenArchetypeRunner();
 
-    //  Profiles webview 
+    //  Profiles webview
+	// Se guarda la referencia: su ayuda muestra los perfiles del pom que se
+	// está mirando, así que hay que refrescarla al cambiar de pom.
+	const profilesView = new MavenProfilesView(context, profileManager);
     context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            MavenProfilesView.viewId,
-            new MavenProfilesView(context, profileManager)
-        )
+        vscode.window.registerWebviewViewProvider(MavenProfilesView.viewId, profilesView)
     );
 
 	//  MavenOptions webview 
@@ -101,25 +126,23 @@ export async function activate(context: vscode.ExtensionContext) {
 			managedPluginsProvider.refresh();
 			managedDependenciesProvider.refresh();
 			parentProvider.refresh();
+			profilesView.refresh();
 		}
 	});
 
+	// El pom activo aporta el icono y el color: sólo existe mientras miras un
+	// pom.xml, así que por sí solo no sirve para dar nombre a la barra.
 	MavenProjectContext.onDidChange(info => {
-		const profiles = profileManager.getActiveProfiles();
-		if (!info) {
-			statusBar.setReady(profiles);
-			return;
-		}
-		if (info.packaging === 'pom' && info.hasModules ) {
-			statusBar.setAggregator(info.artifactId, profiles);
-		} else if (info.packaging === 'pom' ) {
-			statusBar.setParent(info.artifactId, profiles);
-		} else if (info.packaging === 'maven-archetype' ) {
-			statusBar.setArchetype(info.artifactId, profiles);
-		} else {
-			statusBar.setReady(profiles);
-		}
+		statusBar.setPom(info, profileManager.getActiveProfiles());
 	});
+
+	// El módulo activo es el que pone el nombre: acompaña a cualquier fichero,
+	// y no se pierde al pasar de un pom.xml a un fuente.
+	context.subscriptions.push(
+		MavenProjectContext.onDidChangeActiveModule(module => {
+			statusBar.setModule(module, profileManager.getActiveProfiles());
+		})
+	);
 
     //  Cygwin terminal profile 
     new CygwinTerminalProvider().activate(context);
@@ -179,7 +202,8 @@ export async function activate(context: vscode.ExtensionContext) {
     //  Register commands 
     registerCommands(context, commandRunner, evaluator,  archetypeRunner, cygwinScriptRunner, projectsProvider, 
 						propertiesProvider, managedDependenciesProvider, dependenciesProvider, managedPluginsProvider, 
-						pluginsProvider, statusBar, profileManager);
+						pluginsProvider, statusBar, profileManager, mavenUpdateCommnad, cppProperties,
+						javaModules );
 
     //  Validate already-open pom.xml files 
     vscode.workspace.textDocuments.forEach(doc => {
@@ -196,7 +220,9 @@ export async function activate(context: vscode.ExtensionContext) {
     watcher.onDidDelete(() => projectsProvider.refresh());
     context.subscriptions.push(watcher);
 
-    statusBar.setReady(profileManager.getActiveProfiles());
+    // Cebar con lo que ya se sepa: el módulo activo puede haberse resuelto antes
+    // de que nos suscribiéramos a su evento, y entonces no habría llegado nunca.
+    statusBar.setModule(MavenProjectContext.activeModule, profileManager.getActiveProfiles());
 	
 	const poms = await vscode.workspace.findFiles('./pom.xml', null, 1);
 	if (poms.length > 0) {
@@ -249,7 +275,10 @@ function registerCommands(
     managedPlugins: MavenManagedPluginsProvider,
     plugins: MavenPluginsProvider,
     bar: MavenStatusBar,
-    profileManager: MavenProfileManager
+    profileManager: MavenProfileManager,
+	mavenUpdateCommnad: MavenUpdateCommand,
+	cppProperties: CppPropertiesManager,
+	javaModules: ImportJavaModulesCommand
 ) {
     const reg = (cmd: string, fn: (...args: any[]) => any) =>
         context.subscriptions.push(vscode.commands.registerCommand(cmd, fn));
@@ -320,8 +349,22 @@ function registerCommands(
 
 	reg('gjs-maven-vscode-extension.manageProfiles',  () => vscode.commands.executeCommand('mavenProfiles.focus'));
     reg('gjs-maven-vscode-extension.showDependencyTree', async (uri?: vscode.Uri) => { const d = await resolveProjectDir(uri); if (d) { runner.runToOutput('dependency:tree', d, bar); } });
+    reg('gjs-maven-vscode-extension.resolveDependencies', async (uri?: vscode.Uri) => { const d = await resolveProjectDir(uri); if (d) { runner.run('dependency:resolve', d, bar); } });
     reg('gjs-maven-vscode-extension.showAllProfiles', async (uri?: vscode.Uri) => { const d = await resolveProjectDir(uri); if (d) { runner.runToOutput('help:all-profiles', d, bar); } });
     reg('gjs-maven-vscode-extension.showActiveProfiles', async (uri?: vscode.Uri) => { const d = await resolveProjectDir(uri); if (d) { runner.runToOutput('help:active-profiles', d, bar); } });
+
+    reg('gjs-maven-vscode-extension.mavenUpdate', async (uri?: vscode.Uri) => {
+        // Sin uri explícita manda el módulo activo, nunca la raíz del workspace:
+        // un Maven Update sobre un agregador arrastraría a todo el árbol.
+        const dir = uri ? path.dirname(uri.fsPath) : MavenProjectContext.activeModule?.projectDir;
+        if (!dir) {
+            vscode.window.showErrorMessage('Maven Update: no hay ningún módulo Maven activo.');
+            return;
+        }
+        const pomUri = vscode.Uri.file(path.join(dir, 'pom.xml'));
+        await mavenUpdateCommnad.execute(pomUri);
+        properties.refresh();
+    });
 
     reg('gjs-maven-vscode-extension.customCommand', async (uri?: vscode.Uri) => {
         const dir = await resolveProjectDir(uri);
@@ -334,6 +377,9 @@ function registerCommands(
     });
 
     reg('gjs-maven-vscode-extension.refreshProjects', () => projects.refresh());
+
+    reg('gjs-maven-vscode-extension.importJavaModules', () => javaModules.execute());
+    reg('gjs-maven-vscode-extension.forgetJavaModules', () => javaModules.forget());
 
     reg('gjs-maven-vscode-extension.openPom', async () => {
         const poms = await vscode.workspace.findFiles('**/pom.xml', '**/target/**,**/archetype-resources/**,**/node_modules/**', 50);
@@ -422,7 +468,10 @@ reg('gjs-maven-vscode-extension.save',    () => vscode.commands.executeCommand('
 reg('gjs-maven-vscode-extension.saveAll', () => vscode.commands.executeCommand('workbench.action.files.saveAll'));}
 
 function isPomXml(doc: vscode.TextDocument): boolean {
-    return doc.fileName == 'pom.xml' && doc.languageId === 'xml';
+    // doc.fileName es la ruta completa, no el nombre: compararla con 'pom.xml'
+    // daba siempre false, y por eso resolveProjectDir se saltaba el caso del
+    // editor activo y caía a la raíz del workspace.
+    return path.basename(doc.fileName) === 'pom.xml' && doc.languageId === 'xml';
 }
 
 export function deactivate() {

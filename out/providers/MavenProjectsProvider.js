@@ -37,6 +37,23 @@ exports.MavenProjectItem = exports.MavenProjectsProvider = void 0;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+/**
+ * Clave estable para el mapa de poms. En Windows las rutas no distinguen
+ * mayúsculas, y basta con que una venga con 'c:' y otra con 'C:' para que un
+ * módulo deje de encontrar a su padre.
+ */
+function key(p) {
+    const normalized = path.normalize(p);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+/**
+ * Pom al que apunta un <module>. Maven admite tanto el directorio como el
+ * fichero directamente (`../otro/pom.xml`), y rutas relativas hacia arriba.
+ */
+function modulePomPath(parentPomPath, mod) {
+    const target = path.resolve(path.dirname(parentPomPath), mod);
+    return target.toLowerCase().endsWith('.xml') ? target : path.join(target, 'pom.xml');
+}
 function parsePom(uri) {
     const text = fs.readFileSync(uri.fsPath, 'utf8');
     // Strip nested sections to avoid picking up child coords
@@ -48,13 +65,16 @@ function parsePom(uri) {
     const groupId = (stripped.match(/<groupId>([^<]+)/) || [])[1]?.trim() ?? '';
     const version = (stripped.match(/<version>([^<]+)/) || [])[1]?.trim() ?? '';
     const packaging = (stripped.match(/<packaging>([^<]+)/) || [])[1]?.trim() ?? 'jar';
+    // Todos los bloques <modules>, no solo el primero: un pom puede declarar
+    // módulos adicionales dentro de un <profile>.
     const modules = [];
-    const modulesMatch = text.match(/<modules>([\s\S]*?)<\/modules>/);
-    if (modulesMatch) {
-        const re = /<module>([^<]+)<\/module>/g;
-        let m;
-        while ((m = re.exec(modulesMatch[1])) !== null) {
-            modules.push(m[1].trim());
+    const blocks = text.matchAll(/<modules>([\s\S]*?)<\/modules>/g);
+    for (const block of blocks) {
+        for (const m of block[1].matchAll(/<module>([^<]+)<\/module>/g)) {
+            const mod = m[1].trim();
+            if (mod && !modules.includes(mod)) {
+                modules.push(mod);
+            }
         }
     }
     return { uri, artifactId, groupId, version, packaging, modules };
@@ -78,7 +98,7 @@ class MavenProjectsProvider {
             return this.roots.map(p => new MavenProjectItem(p, true));
         }
         if (element.type === 'project') {
-            const pom = this.pomMap.get(element.pomInfo.uri.fsPath);
+            const pom = this.pomMap.get(key(element.pomInfo.uri.fsPath));
             if (!pom) {
                 return [];
             }
@@ -89,10 +109,14 @@ class MavenProjectsProvider {
             items.push(new MavenProjectItem(pom, false, `packaging: ${pom.packaging}`, 'archive'));
             // Child modules
             for (const mod of pom.modules) {
-                const modPomPath = path.join(path.dirname(pom.uri.fsPath), mod, 'pom.xml');
-                const childPom = this.pomMap.get(modPomPath);
+                const childPom = this.pomMap.get(key(modulePomPath(pom.uri.fsPath, mod)));
                 if (childPom) {
                     items.push(new MavenProjectItem(childPom, true));
+                }
+                else {
+                    // Declarado en <modules> pero sin pom en el workspace: antes
+                    // desaparecía en silencio y el árbol mentía sin decirlo.
+                    items.push(new MavenProjectItem(pom, false, `módulo no encontrado: ${mod}`, 'warning'));
                 }
             }
             return items;
@@ -100,11 +124,17 @@ class MavenProjectsProvider {
         return [];
     }
     async buildTree() {
-        const uris = await vscode.workspace.findFiles('**/pom.xml', '{**/node_modules/**,**/target/**,**/archetype-resources/**}', 50);
+        if (this.pomMap.size > 0) {
+            return;
+        } // ya construido; refresh() lo vacía
+        // Sin límite de resultados. Lo había en 50, y un árbol con más poms se
+        // truncaba por donde cayera: findFiles no devuelve en orden jerárquico,
+        // así que unos módulos se quedaban sin cargar y otros aparecían como
+        // raíces por no haberse cargado su padre. Medido en gjs: 120 poms.
+        const uris = await vscode.workspace.findFiles('**/pom.xml', '{**/node_modules/**,**/target/**,**/archetype-resources/**}');
         for (const uri of uris) {
             try {
-                const info = parsePom(uri);
-                this.pomMap.set(uri.fsPath, info);
+                this.pomMap.set(key(uri.fsPath), parsePom(uri));
             }
             catch { /* skip unreadable */ }
         }
@@ -112,13 +142,12 @@ class MavenProjectsProvider {
         const childPaths = new Set();
         for (const pom of this.pomMap.values()) {
             for (const mod of pom.modules) {
-                const childPath = path.join(path.dirname(pom.uri.fsPath), mod, 'pom.xml');
-                childPaths.add(childPath);
+                childPaths.add(key(modulePomPath(pom.uri.fsPath, mod)));
             }
         }
         this.roots = [];
         for (const pom of this.pomMap.values()) {
-            if (!childPaths.has(pom.uri.fsPath)) {
+            if (!childPaths.has(key(pom.uri.fsPath))) {
                 this.roots.push(pom);
             }
         }
@@ -134,7 +163,11 @@ class MavenProjectItem extends vscode.TreeItem {
         if (isProject) {
             this.type = 'project';
             this.description = pomInfo.version;
-            this.tooltip = `${pomInfo.groupId}:${pomInfo.artifactId}:${pomInfo.version}`;
+            // La ruta, además de las coordenadas: dos módulos pueden declarar el
+            // mismo artifactId por un copia-pega, y sin el fichero delante eso
+            // parece un duplicado del árbol en vez de un error del pom.
+            this.tooltip = new vscode.MarkdownString(`**${pomInfo.groupId}:${pomInfo.artifactId}:${pomInfo.version}**\n\n` +
+                `\`${pomInfo.uri.fsPath}\``);
             this.iconPath = this.resolveIcon(pomInfo.packaging, pomInfo.modules.length > 0);
             this.contextValue = 'mavenProject';
             this.command = {

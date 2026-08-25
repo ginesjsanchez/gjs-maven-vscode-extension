@@ -35,80 +35,42 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MavenPropertiesProvider = void 0;
 const vscode = __importStar(require("vscode"));
-const fs = __importStar(require("fs"));
-function getActivePomPath() {
-    const editor = vscode.window.activeTextEditor;
-    if (editor && editor.document.fileName.endsWith('pom.xml')) {
-        return editor.document.uri.fsPath;
-    }
-    return undefined;
-}
-function readActivePom() {
-    const pomPath = getActivePomPath();
-    if (!pomPath) {
-        return undefined;
-    }
-    try {
-        return fs.readFileSync(pomPath, 'utf8');
-    }
-    catch {
-        return undefined;
-    }
-}
+const PomModel_1 = require("./PomModel");
 /**
- * Extracts the content INSIDE a wrapper tag, excluding managed sections.
- * e.g. for dependencies: returns content of <dependencies> but NOT inside <dependencyManagement>
+ * Propiedades del pom.
+ *
+ * Es el panel al que más le afectan los perfiles: sobreescribir una propiedad
+ * por perfil es el uso más corriente que tienen. Por eso cada nombre ocupa una
+ * fila y sus variantes cuelgan de ella — una lista plana mostraría la misma
+ * propiedad tantas veces como perfiles la toquen, y eso se lee como si fueran
+ * propiedades distintas.
  */
-function extractSection(text, tag, excludeWrapper) {
-    if (excludeWrapper) {
-        // Remove the excludeWrapper block first
-        const exRe = new RegExp(`<${excludeWrapper}>[\\s\\S]*?<\\/${excludeWrapper}>`, 'g');
-        text = text.replace(exRe, '');
-    }
-    const match = text.match(new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`));
-    return match ? match[0] : '';
-}
-//  Plugins Provider 
 class MavenPropertiesProvider {
     constructor() {
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        this.section = 'properties';
     }
     refresh() { this._onDidChangeTreeData.fire(); }
     getTreeItem(e) { return e; }
-    getChildren() {
-        const text = readActivePom();
-        if (!text) {
-            return [makeInfoItem('Open a pom.xml to see properties')];
+    getChildren(element) {
+        if (element instanceof PomModel_1.PomEntryItem) {
+            return element.entry.profiles.map(v => new PomModel_1.PomVariantItem(v));
         }
-        // Only plugins outside <pluginManagement>
-        const section = extractSection(text, 'properties').replace("<properties>", "").replace("</properties>", "");
-        return parseProperties(section) || [makeInfoItem('No properties configured')];
+        if (element) {
+            return [];
+        }
+        const project = (0, PomModel_1.readActivePom)();
+        if (!project) {
+            return [(0, PomModel_1.makeInfoItem)('Open a pom.xml to see properties')];
+        }
+        const entries = (0, PomModel_1.collect)(project, this.section);
+        if (entries.length === 0) {
+            return [(0, PomModel_1.makeInfoItem)('No properties configured')];
+        }
+        const icon = new vscode.ThemeIcon('symbol-property');
+        return entries.map(e => new PomModel_1.PomEntryItem(e, icon));
     }
 }
 exports.MavenPropertiesProvider = MavenPropertiesProvider;
-//  Parsers 
-function parseProperties(section) {
-    const items = [];
-    const re = /<!--[\s\S]*?-->|<([a-zA-Z0-9._-]+)>([\s\S]*?)<\/\1>/g;
-    let m;
-    while ((m = re.exec(section)) !== null) {
-        if (!m[1]) {
-            continue;
-        } // es un comentario, saltarif (!m[1]) { continue; } // es un comentario, saltar 
-        const name = m[1];
-        const value = m[2];
-        const item = new vscode.TreeItem(name, vscode.TreeItemCollapsibleState.None);
-        item.description = value;
-        item.tooltip = `${name}`;
-        item.iconPath = new vscode.ThemeIcon('symbol-property');
-        items.push(item);
-    }
-    return items.length > 0 ? items : null;
-}
-function makeInfoItem(label) {
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon('info');
-    return item;
-}
 //# sourceMappingURL=MavenPropertiesProvider.js.map

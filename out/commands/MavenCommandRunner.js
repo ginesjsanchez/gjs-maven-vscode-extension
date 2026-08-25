@@ -37,11 +37,30 @@ exports.MavenCommandRunner = void 0;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const child_process_1 = require("child_process");
 class MavenCommandRunner {
     constructor(context, profileManager, optionsManager) {
         this.context = context;
         this.profileManager = profileManager;
         this.optionsManager = optionsManager;
+    }
+    /**
+     * -f con el pom del proyecto, para no depender del directorio del shell.
+     *
+     * El terminal se comparte entre invocaciones y quien lo sitúa es un `cd`
+     * enviado con sendText, que escribe en el pty: si el shell está ocupado o
+     * todavía arrancando puede perder los primeros caracteres. Visto en vivo un
+     * `cd "..."` convertido en `d "..."` -> command not found -> el shell se
+     * queda donde estaba y el goal siguiente se ejecuta en el módulo anterior,
+     * sin el menor aviso.
+     *
+     * Con -f el comando es autosuficiente. El `cd` se mantiene para que el
+     * prompt acompañe, pero ya no manda: si se pierde un carácter, ahora se
+     * rompe el comando a la vista en vez de compilar en otro sitio.
+     */
+    fileArg(projectDir) {
+        const pom = path.join(projectDir, 'pom.xml');
+        return fs.existsSync(pom) ? ` -f "${pom}"` : '';
     }
     async run(goals, projectDir, statusBar) {
         const config = vscode.workspace.getConfiguration('gjsMaven');
@@ -51,12 +70,34 @@ class MavenCommandRunner {
         const settingsArg = settingsFile ? ` -s "${settingsFile}"` : '';
         const profileArg = this.profileManager?.buildProfileArg() ?? '';
         const optionsArg = this.optionsManager?.buildOptionsArg() ?? '';
-        const command = `${mvn}${settingsArg}${profileArg}${optionsArg} ${goals}`;
+        const command = `${mvn}${settingsArg}${profileArg}${optionsArg}${this.fileArg(projectDir)} ${goals}`;
         statusBar?.setRunning(goals);
         const terminal = this.getOrCreateTerminal(useExisting, projectDir);
         terminal.show(true);
         terminal.sendText(command);
         statusBar?.setReady();
+    }
+    async runAndWait(goals, projectDir, channel) {
+        return new Promise((resolve, reject) => {
+            const config = vscode.workspace.getConfiguration('gjsMaven');
+            const mvn = this.resolveMavenExecutable(projectDir, config);
+            const settingsFile = config.get('settingsFile', '');
+            const useExisting = config.get('terminal.useExistingTerminal', true);
+            const settingsArg = settingsFile ? ` -s "${settingsFile}"` : '';
+            const profileArg = this.profileManager?.buildProfileArg() ?? '';
+            const optionsArg = this.optionsManager?.buildOptionsArg() ?? '';
+            const command = `${mvn}${settingsArg}${profileArg}${optionsArg}${this.fileArg(projectDir)} ${goals}`;
+            const proc = (0, child_process_1.exec)(command, { cwd: projectDir });
+            proc.stdout?.on('data', (data) => channel.appendLine(data.toString()));
+            proc.stderr?.on('data', (data) => channel.appendLine(data.toString()));
+            proc.on('close', (code) => {
+                if (code === 0)
+                    resolve();
+                else
+                    reject(new Error(`Maven salió con código ${code}`));
+            });
+            proc.on('error', reject);
+        });
     }
     async showEffectivePom(projectDir) {
         const config = vscode.workspace.getConfiguration('gjsMaven');
@@ -70,7 +111,7 @@ class MavenCommandRunner {
             fs.mkdirSync(targetDir, { recursive: true });
         }
         const outputFile = path.join(targetDir, 'effective-pom.xml');
-        const command = `${mvn}${settingsArg}${profileArg}${optionsArg} help:effective-pom -Doutput="${outputFile}"`;
+        const command = `${mvn}${settingsArg}${profileArg}${optionsArg}${this.fileArg(projectDir)} help:effective-pom -Doutput="${outputFile}"`;
         const terminal = this.getOrCreateTerminal(false, projectDir);
         terminal.show(true);
         terminal.sendText(command);
@@ -98,7 +139,7 @@ class MavenCommandRunner {
             fs.mkdirSync(targetDir, { recursive: true });
         }
         const outputFile = path.join(targetDir, 'output.txt');
-        const command = `${mvn}${settingsArg}${profileArg}${optionsArg} ${goals} -Doutput="${outputFile}"`;
+        const command = `${mvn}${settingsArg}${profileArg}${optionsArg}${this.fileArg(projectDir)} ${goals} -Doutput="${outputFile}"`;
         statusBar?.setRunning(goals);
         const terminal = this.getOrCreateTerminal(useExisting, projectDir);
         terminal.show(true);
@@ -141,7 +182,7 @@ class MavenCommandRunner {
         }
         const outputFile = path.join(targetDir, 'output.txt');
         // Distinto nombre para no colisionar con runToOutput
-        const command = `${mvn}${settingsArg}${profileArg}${optionsArg} ${goals} > "${outputFile}"`;
+        const command = `${mvn}${settingsArg}${profileArg}${optionsArg}${this.fileArg(projectDir)} ${goals} > "${outputFile}"`;
         const terminal = this.getOrCreateTerminal(useExisting, projectDir);
         terminal.show(true);
         terminal.sendText(command);
@@ -155,8 +196,11 @@ class MavenCommandRunner {
                                 const currentSize = fs.statSync(outputFile).size;
                                 if (currentSize === prevSize && currentSize > 0) {
                                     // Tamaño estable, ya terminó de escribir
-                                    const text = fs.readFileSync(outputFile, 'utf8');
-                                    resolve(text.trim());
+                                    const text = fs.readFileSync(outputFile, 'utf8')
+                                        ?.replace(/^\uFEFF/, '') // quita BOM
+                                        ?.replace(/[^\x20-\x7E]/g, '') // quita caracteres no ASCII
+                                        ?.trim();
+                                    resolve(text);
                                 }
                                 else {
                                     // Sigue cambiando, esperar otro poco
@@ -169,6 +213,30 @@ class MavenCommandRunner {
                 }
             });
             setTimeout(() => { watcher.close(); resolve(undefined); }, 30000);
+        });
+    }
+    /**
+     * Como runToString, pero sin terminal ni fichero intermedio: captura stdout
+     * directamente. Pensado para consultas de fondo (no interactivas), donde
+     * abrir un terminal y escribir en target/ sería una molestia.
+     */
+    async runToStringSilent(goals, projectDir, timeoutMs = 60000) {
+        const config = vscode.workspace.getConfiguration('gjsMaven');
+        const mvn = this.resolveMavenExecutable(projectDir, config);
+        const settingsFile = config.get('settingsFile', '');
+        const settingsArg = settingsFile ? ` -s "${settingsFile}"` : '';
+        const profileArg = this.profileManager?.buildProfileArg() ?? '';
+        const optionsArg = this.optionsManager?.buildOptionsArg() ?? '';
+        const command = `${mvn}${settingsArg}${profileArg}${optionsArg}${this.fileArg(projectDir)} ${goals}`;
+        return new Promise((resolve) => {
+            (0, child_process_1.exec)(command, { cwd: projectDir, timeout: timeoutMs, windowsHide: true }, (err, stdout) => {
+                if (err) {
+                    resolve(undefined);
+                    return;
+                }
+                const text = stdout?.split(String.fromCharCode(0xFEFF)).join('').trim();
+                resolve(text ? text : undefined);
+            });
         });
     }
     resolveMavenExecutable(cwd, config) {

@@ -2,7 +2,7 @@
   "name": "gjs-maven-vscode-extension",
   "displayName": "Gjs Maven VS Code Extension",
   "description": "Maven project support for Java, C++, Python and more. Edit pom.xml with intelligence and run Maven commands.",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "publisher": "GJSoftware",
   "engines": {
     "vscode": "^1.90.0"
@@ -12,7 +12,17 @@
     "Snippets",
     "Other"
   ],
-  "keywords": ["maven", "mave-archetype", "java", "c", "c++", "python", "pom.xml", "build"],
+  "keywords": [
+    "maven",
+    "mave-archetype",
+    "java",
+    "c",
+    "c++",
+    "python",
+    "typescript",
+    "pom.xml",
+    "build"
+  ],
   "author": {
     "name": "GJ Software",
     "email": "gjsoft@gmx.es",
@@ -53,92 +63,92 @@
       {
         "command": "gjs-maven-vscode-extension.clean",
         "title": "Maven: Clean",
-		"icon": "$(trash)"
+        "icon": "$(trash)"
       },
       {
         "command": "gjs-maven-vscode-extension.validate",
         "title": "Maven: Validate",
-		"icon": "$(check)"
+        "icon": "$(check)"
       },
       {
         "command": "gjs-maven-vscode-extension.compile",
         "title": "Maven: Compile",
-		"icon": "$(symbol-class)"
+        "icon": "$(symbol-class)"
       },
       {
         "command": "gjs-maven-vscode-extension.test",
         "title": "Maven: Test",
-		"icon": "$(beaker)"
+        "icon": "$(beaker)"
       },
       {
         "command": "gjs-maven-vscode-extension.package",
         "title": "Maven: Package",
-		"icon": "$(archive)"
+        "icon": "$(archive)"
       },
       {
         "command": "gjs-maven-vscode-extension.verify",
         "title": "Maven: Verify",
-		"icon": "$(verified)"
+        "icon": "$(verified)"
       },
       {
         "command": "gjs-maven-vscode-extension.install",
         "title": "Maven: Install",
-		"icon": "$(desktop-download)"
+        "icon": "$(desktop-download)"
       },
       {
         "command": "gjs-maven-vscode-extension.deploy",
         "title": "Maven: Deploy",
-		"icon": "$(cloud-upload)"
+        "icon": "$(cloud-upload)"
       },
       {
         "command": "gjs-maven-vscode-extension.cleanPackage",
         "title": "Maven: Clean Package",
-		"icon": "$(archive)"
+        "icon": "$(archive)"
       },
       {
         "command": "gjs-maven-vscode-extension.cleanInstall",
         "title": "Maven: Clean Install",
-		"icon": "$(play)"
+        "icon": "$(play)"
       },
       {
         "command": "gjs-maven-vscode-extension.cleanDeploy",
         "title": "Maven: Clean Deploy",
-		"icon": "$(play)"
+        "icon": "$(play)"
       },
       {
         "command": "gjs-maven-vscode-extension.site",
         "title": "Maven: Site",
-		"icon": "$(globe)"
+        "icon": "$(globe)"
       },
       {
         "command": "gjs-maven-vscode-extension.addProperty",
         "title": "Maven: Add Property",
-		"icon": "$(symbol-property)"
+        "icon": "$(symbol-property)"
       },
       {
         "command": "gjs-maven-vscode-extension.addManagedDependency",
         "title": "Maven: Add Managed Dependency",
-		"icon": "$(library)"
+        "icon": "$(library)"
       },
       {
         "command": "gjs-maven-vscode-extension.addDependency",
         "title": "Maven: Add Dependency",
-		"icon": "$(library)"
+        "icon": "$(library)"
       },
       {
         "command": "gjs-maven-vscode-extension.addManagedPlugin",
         "title": "Maven: Add Managed Plugin",
-		"icon": "$(gear)"
+        "icon": "$(gear)"
       },
       {
         "command": "gjs-maven-vscode-extension.addPlugin",
         "title": "Maven: Add Plugin",
-		"icon": "$(gear))"
+        "icon": "$(gear))"
       },
       {
         "command": "gjs-maven-vscode-extension.showEffectivePom",
         "title": "Maven: Show Effective Pom",
-		"icon": "$(preview)"
+        "icon": "$(preview)"
       },
       {
         "command": "gjs-maven-vscode-extension.showDependencyTree",
@@ -146,19 +156,39 @@
         "icon": "$(type-hierarchy)"
       },
       {
+        "command": "gjs-maven-vscode-extension.resolveDependencies",
+        "title": "Maven: Dependency Resolve",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "gjs-maven-vscode-extension.mavenUpdate",
+        "title": "Maven: Maven Update",
+        "icon": "$(sync)"
+      },
+      {
         "command": "gjs-maven-vscode-extension.showAllProfiles",
         "title": "Maven: Show All Profiles",
-		"icon": "$(list-unordered)"
+        "icon": "$(list-unordered)"
       },
       {
         "command": "gjs-maven-vscode-extension.showActiveProfiles",
         "title": "Maven: Show Active Profiles",
-		"icon": "$(filter-filled)"
+        "icon": "$(filter-filled)"
       },
       {
         "command": "gjs-maven-vscode-extension.refreshProjects",
         "title": "Maven: Refresh Projects",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "gjs-maven-vscode-extension.importJavaModules",
+        "title": "Maven: Import Only Java Modules Into The Java Language Server",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "gjs-maven-vscode-extension.forgetJavaModules",
+        "title": "Maven: Stop Restricting The Java Language Server",
+        "icon": "$(clear-all)"
       },
       {
         "command": "gjs-maven-vscode-extension.setVersion",
@@ -195,10 +225,10 @@
         "command": "gjs-maven-vscode-extension.manageProfiles",
         "title": "Maven: Manage Selected Profiles"
       },
-	  {
-		"command": "gjs-maven-vscode-extension.runInCygwin",
-		"title": "Run in Cygwin",
-		"icon": "$(terminal)"
+      {
+        "command": "gjs-maven-vscode-extension.runInCygwin",
+        "title": "Run in Cygwin",
+        "icon": "$(terminal)"
       },
       {
         "command": "gjs-maven-vscode-extension.evaluate",
@@ -215,22 +245,22 @@
         "title": "Maven: Archetype Generate",
         "icon": "$(file-code)"
       },
-	  { 
-		"command": "gjs-maven-vscode-extension.save",
-		"title": "Save",
-		"icon": "$(save)" 
-	  },
-	  { 
-		"command": "gjs-maven-vscode-extension.saveAll", 
-		"title": "Save All",  
-		"icon": "$(save-all)"
-	  },
-	  {
-		"command": "gjs-maven-vscode-extension.openParentPom",
-		"title": "Open Parent POM",
-		"icon": "$(go-to-file)"
-	  }
-	],
+      {
+        "command": "gjs-maven-vscode-extension.save",
+        "title": "Save",
+        "icon": "$(save)"
+      },
+      {
+        "command": "gjs-maven-vscode-extension.saveAll",
+        "title": "Save All",
+        "icon": "$(save-all)"
+      },
+      {
+        "command": "gjs-maven-vscode-extension.openParentPom",
+        "title": "Open Parent POM",
+        "icon": "$(go-to-file)"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -321,7 +351,7 @@
       }
     ],
     "menus": {
-       "explorer/context": [
+      "explorer/context": [
         {
           "submenu": "gjs-maven-vscode-extension.ole",
           "group": "navigation"
@@ -387,7 +417,7 @@
           "group": "2_lifecycle@4"
         },
         {
-         "command": "gjs-maven-vscode-extension.runCommand",
+          "command": "gjs-maven-vscode-extension.runCommand",
           "group": "2_tools@1"
         },
         {
@@ -395,74 +425,19 @@
           "group": "2_tools@2"
         },
         {
+          "command": "gjs-maven-vscode-extension.resolveDependencies",
+          "group": "3_compile@1"
+        },
+        {
+          "command": "gjs-maven-vscode-extension.mavenUpdate",
+          "group": "3_compile@2"
+        },
+        {
           "command": "gjs-maven-vscode-extension.showAllProfiles",
-          "group": "3_pom@1"
-        },
-        {
-          "command": "gjs-maven-vscode-extension.showActiveProfiles",
-          "group": "3_pom@2"
-        },
-        {
-          "command": "gjs-maven-vscode-extension.setVersion",
-          "group": "3_pom@3"
-        },
-        {
-          "command": "gjs-maven-vscode-extension.evaluate",
-          "group": "3_pom@4"
-        },
-        {
-          "command": "gjs-maven-vscode-extension.openPom",
-          "group": "3_pom@5"
-        }
-      ],
-      "gjs-maven-vscode-extension.explorerShell": [
-        {
-          "when": "resourcePath =~ /\\.sh$/",
-          "command": "gjs-maven-vscode-extension.runInCygwin",
-          "group": "1_cygwin@1"
-        }
-	  ],
-      "editor/context": [
-        {
-          "when": "resourceFilename == 'pom.xml' && resourcePath =~ /^((?!archetype-resources).)*$/",
-          "submenu": "gjs-maven-vscode-extension.editorSubmenu",
-          "group": "navigation"
-        }
-      ],
-      "gjs-maven-vscode-extension.editorSubmenu": [
-        {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.addProperty",
-          "group": "3_pom@1"
-        },
-        {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.addManagedDependency",
-          "group": "3_pom@2"
-        },
-        {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.addDependency",
-          "group": "3_pom@3"
-        },
-        {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.addManagedPlugin",
-          "group": "3_pom@4"
-        },
-        {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.addPlugin",
-          "group": "3_pom@5"
-        },
-        {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.showEffectivePom",
           "group": "4_pom@1"
         },
         {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.showDependencyTree",
+          "command": "gjs-maven-vscode-extension.showActiveProfiles",
           "group": "4_pom@2"
         },
         {
@@ -474,47 +449,135 @@
           "group": "4_pom@4"
         },
         {
-		  "when": "!gjsMaven.isAggregator", 	
-          "command": "gjs-maven-vscode-extension.updateProperties",
+          "command": "gjs-maven-vscode-extension.openPom",
           "group": "4_pom@5"
         }
-	],
-    "view/title": [
+      ],
+      "gjs-maven-vscode-extension.explorerShell": [
+        {
+          "when": "resourcePath =~ /\\.sh$/",
+          "command": "gjs-maven-vscode-extension.runInCygwin",
+          "group": "1_cygwin@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "when": "resourceFilename == 'pom.xml' && resourcePath =~ /^((?!archetype-resources).)*$/",
+          "submenu": "gjs-maven-vscode-extension.editorSubmenu",
+          "group": "navigation"
+        }
+      ],
+      "gjs-maven-vscode-extension.editorSubmenu": [
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.addProperty",
+          "group": "3_pom@1"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.addManagedDependency",
+          "group": "3_pom@2"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.addDependency",
+          "group": "3_pom@3"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.addManagedPlugin",
+          "group": "3_pom@4"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.addPlugin",
+          "group": "3_pom@5"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.showEffectivePom",
+          "group": "4_pom@1"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.showDependencyTree",
+          "group": "4_pom@2"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.resolveDependencies",
+          "group": "5_pom@1"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.mavenUpdate",
+          "group": "5_pom@2"
+        },
+        {
+          "command": "gjs-maven-vscode-extension.setVersion",
+          "group": "6_pom@1"
+        },
+        {
+          "command": "gjs-maven-vscode-extension.evaluate",
+          "group": "6_pom@2"
+        },
+        {
+          "when": "!gjsMaven.isAggregator",
+          "command": "gjs-maven-vscode-extension.updateProperties",
+          "group": "6_pom@3"
+        }
+      ],
+      "view/title": [
         {
           "command": "gjs-maven-vscode-extension.refreshProjects",
           "when": "view == mavenProjects",
           "group": "navigation"
         },
-		{ 
-			"command": "gjs-maven-vscode-extension.save",    
-			"when": "view == mavenProjects", 
-			"group": "navigation" 
-		},
-		{
-			"command": "gjs-maven-vscode-extension.saveAll", 
-			"when": "view == mavenProjects", 
-			"group": "navigation" 
-		},
-		{
-			"command": "gjs-maven-vscode-extension.openParentPom",
-			"when": "view == mavenParent && gjsMaven.hasParent",
-			"group": "navigation"
-		}
-	]
+        {
+          "command": "gjs-maven-vscode-extension.save",
+          "when": "view == mavenProjects",
+          "group": "navigation"
+        },
+        {
+          "command": "gjs-maven-vscode-extension.saveAll",
+          "when": "view == mavenProjects",
+          "group": "navigation"
+        },
+        {
+          "command": "gjs-maven-vscode-extension.openParentPom",
+          "when": "view == mavenParent && gjsMaven.hasParent",
+          "group": "navigation"
+        }
+      ]
     },
     "languages": [
       {
         "id": "xml",
-        "extensions": [".xml"],
-        "aliases": ["XML", "xml", "Xml"]
+        "extensions": [
+          ".xml"
+        ],
+        "aliases": [
+          "XML",
+          "xml",
+          "Xml"
+        ]
       },
-	  {
-		"id": "velocity",
-		"aliases": ["Velocity", "velocity"],
-		"extensions": [".vm", ".vtl", ".velocity"],
-		"filenamePatterns": ["**/src/main/resources/archetype-resources/**/*"]
-	  }
-	],
+      {
+        "id": "velocity",
+        "aliases": [
+          "Velocity",
+          "velocity"
+        ],
+        "extensions": [
+          ".vm",
+          ".vtl",
+          ".velocity"
+        ],
+        "filenamePatterns": [
+          "**/src/main/resources/archetype-resources/**/*"
+        ]
+      }
+    ],
     "snippets": [
       {
         "language": "xml",
@@ -536,7 +599,14 @@
         },
         "gjsMaven.defaultGoals": {
           "type": "array",
-          "default": ["clean", "compile", "test", "package", "install", "deploy"],
+          "default": [
+            "clean",
+            "compile",
+            "test",
+            "package",
+            "install",
+            "deploy"
+          ],
           "description": "Default Maven lifecycle goals shown in the panel"
         },
         "gjsMaven.terminal.useExistingTerminal": {
@@ -574,23 +644,36 @@
           "default": true,
           "description": "Show Maven status bar item"
         },
+        "gjsMaven.showLanguageStatus": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active Maven module and its language in the Editor Language Status panel, next to what the language extensions report."
+        },
+        "gjsMaven.cpp.associateHeaders": {
+          "type": "boolean",
+          "default": true,
+          "description": "Associate .h files of C modules with the 'c' language. VS Code maps .h to C++ by default, which makes headers of a pure C module open in C++ mode. Adds entries to files.associations in the workspace settings for the C modules you visit."
+        },
         "gjsMaven.cygwinPath": {
           "type": "string",
           "default": "",
           "description": "Path to Cygwin installation folder (e.g. C:\\cygwin64). If set, a Cygwin terminal profile will be registered in VS Code."
         },
-		"gjsMaven.terminalProfile": {
-			"type": "string",
-			"default": "",
-			"description": "Terminal profile to use for Maven commands (e.g. 'Cygwin', 'PowerShell', 'Git Bash'). Leave empty to use VS Code default."
-		}
-	  }
+        "gjsMaven.terminalProfile": {
+          "type": "string",
+          "default": "",
+          "description": "Terminal profile to use for Maven commands (e.g. 'Cygwin', 'PowerShell', 'Git Bash'). Leave empty to use VS Code default."
+        }
+      }
     },
     "problemMatchers": [
       {
         "name": "maven",
         "owner": "maven",
-        "fileLocation": ["relative", "${workspaceFolder}"],
+        "fileLocation": [
+          "relative",
+          "${workspaceFolder}"
+        ],
         "pattern": {
           "regexp": "^\\[ERROR\\]\\s+(.+):\\[(\\d+),(\\d+)\\]\\s+(.+)$",
           "file": 1,
@@ -603,7 +686,9 @@
     "taskDefinitions": [
       {
         "type": "maven",
-        "required": ["goals"],
+        "required": [
+          "goals"
+        ],
         "properties": {
           "goals": {
             "type": "array",
@@ -629,15 +714,19 @@
     "lint": "eslint src --ext ts"
   },
   "devDependencies": {
-    "rimraf": "^5.0.0",
-    "@types/vscode": "^1.85.0",
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^20.x",
+    "@types/tar": "^6.1.13",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^6.x",
     "@typescript-eslint/parser": "^6.x",
     "eslint": "^8.x",
+    "rimraf": "^5.0.0",
     "typescript": "^5.x"
   },
   "dependencies": {
-    "fast-xml-parser": "^4.3.4"
+    "adm-zip": "^0.5.17",
+    "fast-xml-parser": "^4.3.4",
+    "tar": "^7.5.15"
   }
 }

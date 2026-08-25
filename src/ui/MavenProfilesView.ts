@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { MavenProfileManager } from '../commands/MavenProfileManager';
+import { readActivePom, declaredProfiles } from '../providers/PomModel';
 
 export class MavenProfilesView implements vscode.WebviewViewProvider {
     public static readonly viewId = 'mavenProfiles';
@@ -38,9 +40,17 @@ export class MavenProfilesView implements vscode.WebviewViewProvider {
     }
 
     private sendProfiles(): void {
+        // Los perfiles declarados son los del pom que se está mirando, no los de
+        // todo el árbol: la ayuda sirve para no tener que abrir el fichero.
+        // Los heredados de un pom padre no salen; para eso está help:all-profiles.
+        const project = readActivePom();
+        const pomPath = vscode.window.activeTextEditor?.document.uri.fsPath;
+
         this.webviewView?.webview.postMessage({
             command: 'update',
-            profiles: this.profileManager.getActiveProfiles()
+            profiles: this.profileManager.getActiveProfiles(),
+            declared: project ? declaredProfiles(project) : null,
+            pom: project && pomPath ? path.basename(path.dirname(pomPath)) : null
         });
     }
 
@@ -70,6 +80,22 @@ button.primary { width: 100%; background: var(--vscode-button-background); color
 button.primary:hover { background: var(--vscode-button-hoverBackground); }
 button.secondary { width: 100%; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; padding: 4px 6px; cursor: pointer; font-size: var(--vscode-font-size); border-radius: 2px; margin-top: 4px; }
 button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+.row { display: flex; gap: 4px; align-items: stretch; margin-bottom: 4px; }
+.row input { flex: 1; min-width: 0; margin-bottom: 0; }
+button.help { flex: 0 0 auto; width: 24px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; cursor: pointer; border-radius: 2px; font-size: var(--vscode-font-size); }
+button.help:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button.help[aria-expanded="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.help-box { margin-top: 6px; border: 1px solid var(--vscode-widget-border, #444); border-radius: 2px; padding: 4px; }
+.help-box.hidden { display: none; }
+.help-title { font-size: 11px; text-transform: uppercase; color: var(--vscode-descriptionForeground); margin-bottom: 4px; }
+.declared { display: flex; flex-direction: column; gap: 2px; }
+.declared-item { background: none; border: none; color: var(--vscode-foreground); text-align: left; cursor: pointer; padding: 3px 4px; border-radius: 2px; width: 100%; font-size: var(--vscode-font-size); font-family: var(--vscode-font-family); }
+.declared-item:hover { background: var(--vscode-list-hoverBackground); }
+.declared-item[disabled] { cursor: default; opacity: .6; }
+.declared-item[disabled]:hover { background: none; }
+.declared-name { display: block; }
+.declared-meta { display: block; font-size: 11px; color: var(--vscode-descriptionForeground); }
+.tick { color: var(--vscode-charts-green, #89d185); }
 </style>
 </head>
 <body>
@@ -83,16 +109,68 @@ button.secondary:hover { background: var(--vscode-button-secondaryHoverBackgroun
 <hr>
 
 <div class="section-header"><h3>Profile</h3></div>
-<input id="inp" type="text" placeholder="Profile name..." />
+<div class="row">
+    <input id="inp" type="text" placeholder="Profile name..." />
+    <button class="help" id="btn-help" aria-expanded="false" title="Profiles declared in this pom.xml">?</button>
+</div>
 <button class="primary" id="btn-add">Add</button>
+
+<div class="help-box hidden" id="help">
+    <div class="help-title" id="help-title">Declared in this pom.xml</div>
+    <div class="declared" id="declared"></div>
+</div>
 
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
 
 vscode.postMessage({ command: 'ready' });
 
+let state = { profiles: [], declared: null, pom: null };
+
 window.addEventListener('message', e => {
-    if (e.data.command === 'update') { render(e.data.profiles); }
+    if (e.data.command !== 'update') { return; }
+    state = e.data;
+    render(state.profiles);
+    renderDeclared();
+});
+
+// Los perfiles que declara el pom que se está mirando. Se piden con el botón
+// para no ocupar sitio permanentemente en un panel tan estrecho.
+function renderDeclared() {
+    const title = document.getElementById('help-title');
+    const box = document.getElementById('declared');
+
+    if (!state.declared) {
+        title.textContent = 'Declared profiles';
+        box.innerHTML = '<span class="empty">Open a pom.xml to see its profiles</span>';
+        return;
+    }
+
+    title.textContent = 'Declared in ' + esc(state.pom || 'this pom.xml');
+
+    if (state.declared.length === 0) {
+        box.innerHTML = '<span class="empty">This pom.xml declares no profiles</span>';
+        return;
+    }
+
+    const active = state.profiles || [];
+    box.innerHTML = state.declared.map(function (p) {
+        const on = active.indexOf(p.id) >= 0;
+        const meta = [p.activation, p.contributes].filter(Boolean).join(' — ');
+        return '<button class="declared-item" data-name="' + esc(p.id) + '"' +
+                   (on ? ' disabled title="Already active"' : ' title="Add to active profiles"') + '>' +
+                   '<span class="declared-name">' + (on ? '<span class="tick">✓</span> ' : '') + esc(p.id) + '</span>' +
+                   (meta ? '<span class="declared-meta">' + esc(meta) + '</span>' : '') +
+               '</button>';
+    }).join('');
+}
+
+document.getElementById('btn-help').addEventListener('click', function () {
+    const help = document.getElementById('help');
+    const btn = document.getElementById('btn-help');
+    const show = help.classList.contains('hidden');
+    help.classList.toggle('hidden', !show);
+    btn.setAttribute('aria-expanded', String(show));
 });
 
 function render(profiles) {
@@ -107,14 +185,21 @@ function render(profiles) {
             '<button class="btn-x" data-name="' + esc(p) + '" title="Remove">✕</button>' +
         '</div>'
     ).join('');
-
-    // Attach listeners to each ✕ button
-    list.querySelectorAll('.btn-x').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            vscode.postMessage({ command: 'remove', name: btn.getAttribute('data-name') });
-        });
-    });
 }
+
+// Un listener por contenedor en lugar de uno por fila: se enganchan al arrancar
+// y siguen valiendo por muchas veces que se reescriba el innerHTML.
+document.getElementById('list').addEventListener('click', function (e) {
+    const btn = e.target.closest('.btn-x');
+    if (!btn) { return; }
+    vscode.postMessage({ command: 'remove', name: btn.getAttribute('data-name') });
+});
+
+document.getElementById('declared').addEventListener('click', function (e) {
+    const btn = e.target.closest('.declared-item');
+    if (!btn || btn.disabled) { return; }
+    vscode.postMessage({ command: 'add', name: btn.getAttribute('data-name') });
+});
 
 document.getElementById('btn-add').addEventListener('click', function() {
     const inp = document.getElementById('inp');

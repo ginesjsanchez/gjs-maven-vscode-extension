@@ -17,15 +17,25 @@ export class CygwinTerminalProvider {
     }
 
 
+    /**
+     * Registra el perfil de terminal de Cygwin, si no lo hay ya.
+     *
+     * Va por la API de configuración, no por el fichero. settings.json es del
+     * usuario y admite comentarios (jsonc): leerlo con JSON.parse fallaba en
+     * cuanto había uno, y reescribirlo entero con JSON.stringify se los habría
+     * llevado por delante junto con el formato. La API fusiona sobre lo que ya
+     * hay y respeta el resto del fichero.
+     */
     private registerProfile(): void {
         const config = vscode.workspace.getConfiguration('gjsMaven');
         const cygwinPath = config.get<string>('cygwinPath', '').trim();
         if (!cygwinPath) { return; }
 
-        const bashExe = path.join(cygwinPath, 'bin', 'mintty.exe');
-        if (!fs.existsSync(bashExe)) {
+        const mintty = path.join(cygwinPath, 'bin', 'mintty.exe');
+        const icon = path.join(cygwinPath, 'Cygwin-Terminal.ico');
+        if (!fs.existsSync(mintty)) {
             vscode.window.showWarningMessage(
-                `Gjs Maven: Cygwin bash not found at "${bashExe}". Check gjsMaven.cygwinPath.`
+                `Gjs Maven: Cygwin terminal not found at "${mintty}". Check gjsMaven.cygwinPath.`
             );
             return;
         }
@@ -33,43 +43,30 @@ export class CygwinTerminalProvider {
         const folders = vscode.workspace.workspaceFolders;
         if (!folders || folders.length === 0) { return; }
 
-        const vscodeDir = path.join(folders[0].uri.fsPath, '.vscode');
-        const settingsFile = path.join(vscodeDir, 'settings.json');
+        const terminal = vscode.workspace.getConfiguration('terminal.integrated');
 
-        // Read existing settings.json or start fresh
-        let settings: Record<string, unknown> = {};
-        if (fs.existsSync(settingsFile)) {
-            try {
-                settings = JSON.parse(fs.readFileSync(settingsFile, 'utf8'));
-            } catch {
-                vscode.window.showWarningMessage('Gjs Maven: Could not parse .vscode/settings.json');
-                return;
+        // Para decidir, el valor efectivo: si el perfil ya lo tiene puesto el
+        // usuario en sus ajustes globales, no hay que duplicarlo en el workspace.
+        const effective = terminal.get<Record<string, unknown>>('profiles.windows', {});
+        if (effective['Cygwin']) { return; }
+
+        // Para escribir, solo el ámbito propio: con el valor efectivo
+        // acabaríamos copiando los perfiles del usuario dentro del workspace.
+        const scoped = {
+            ...(terminal.inspect<Record<string, unknown>>('profiles.windows')?.workspaceValue ?? {})
+        };
+        scoped['Cygwin'] = {
+            path: mintty,
+            args: ['-i', icon, '-'],
+            env: {
+                CHERE_INVOKING: '1',
+                CYGWIN: 'nodosfilewarning'
             }
-        }
+        };
 
-        // Check if already registered
-        const profiles = (settings['terminal.integrated.profiles.windows'] as Record<string, unknown>) ?? {};
-        if (profiles['Cygwin']) { return; }
-
-        // Add Cygwin profile
-		profiles['Cygwin'] = {
-			path: bashExe.replace(/\\/g, '\\\\'),
-			args: ['-i /Cygwin-Terminal.ico -'],
-			env: { 
-				CHERE_INVOKING: '1',
-				CYGWIN: 'nodosfilewarning'
-			}
-		};
-        settings['terminal.integrated.profiles.windows'] = profiles;
-
-        // Write back
-        if (!fs.existsSync(vscodeDir)) {
-            fs.mkdirSync(vscodeDir, { recursive: true });
-        }
-        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 4), 'utf8');
-
-        vscode.window.showInformationMessage(
-            'Gjs Maven: Cygwin terminal profile added to .vscode/settings.json. Select it from the terminal dropdown.'
-        );
+        void terminal.update('profiles.windows', scoped, vscode.ConfigurationTarget.Workspace)
+            .then(() => vscode.window.showInformationMessage(
+                'Gjs Maven: Cygwin terminal profile added. Select it from the terminal dropdown.'
+            ));
     }
 }

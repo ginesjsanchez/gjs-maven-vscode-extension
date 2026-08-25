@@ -35,171 +35,98 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.MavenManagedDependenciesProvider = exports.MavenDependenciesProvider = exports.MavenManagedPluginsProvider = exports.MavenPluginsProvider = void 0;
 const vscode = __importStar(require("vscode"));
-const fs = __importStar(require("fs"));
-function getActivePomPath() {
-    const editor = vscode.window.activeTextEditor;
-    if (editor && editor.document.fileName.endsWith('pom.xml')) {
-        return editor.document.uri.fsPath;
-    }
-    return undefined;
-}
-function readActivePom() {
-    const pomPath = getActivePomPath();
-    if (!pomPath) {
-        return undefined;
-    }
-    try {
-        return fs.readFileSync(pomPath, 'utf8');
-    }
-    catch {
-        return undefined;
-    }
-}
+const PomModel_1 = require("./PomModel");
 /**
- * Extracts the content INSIDE a wrapper tag, excluding managed sections.
- * e.g. for dependencies: returns content of <dependencies> but NOT inside <dependencyManagement>
+ * Los cuatro paneles son el mismo panel con otra sección y otro icono, así que
+ * comparten implementación. Cada fila es un elemento del pom; sus hijos, si los
+ * tiene, son lo que aporta cada perfil.
  */
-function extractSection(text, tag, excludeWrapper) {
-    if (excludeWrapper) {
-        // Remove the excludeWrapper block first
-        const exRe = new RegExp(`<${excludeWrapper}>[\\s\\S]*?<\\/${excludeWrapper}>`, 'g');
-        text = text.replace(exRe, '');
-    }
-    const match = text.match(new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`));
-    return match ? match[0] : '';
-}
-/**
- * Extracts the content INSIDE a managed wrapper tag.
- * e.g. for managedDependencies: returns content of <dependencyManagement><dependencies>
- */
-function extractManagedSection(text, wrapperTag, innerTag) {
-    const wrapperMatch = text.match(new RegExp(`<${wrapperTag}>([\\s\\S]*?)<\\/${wrapperTag}>`));
-    if (!wrapperMatch) {
-        return '';
-    }
-    const innerMatch = wrapperMatch[1].match(new RegExp(`<${innerTag}>([\\s\\S]*?)<\\/${innerTag}>`));
-    return innerMatch ? innerMatch[1] : '';
-}
-//  Plugins Provider 
-class MavenPluginsProvider {
+class PomSectionProvider {
     constructor() {
         this._onDidChangeTreeData = new vscode.EventEmitter();
         this.onDidChangeTreeData = this._onDidChangeTreeData.event;
     }
     refresh() { this._onDidChangeTreeData.fire(); }
     getTreeItem(e) { return e; }
-    getChildren() {
-        const text = readActivePom();
-        if (!text) {
-            return [makeInfoItem('Open a pom.xml to see plugins')];
+    getChildren(element) {
+        if (element instanceof PomModel_1.PomEntryItem) {
+            return element.entry.profiles.map(v => new PomModel_1.PomVariantItem(v));
         }
-        // Only plugins outside <pluginManagement>
-        const section = extractSection(text, 'plugins', 'pluginManagement');
-        return parsePlugins(section) || [makeInfoItem('No plugins configured')];
+        if (element) {
+            return [];
+        }
+        const project = (0, PomModel_1.readActivePom)();
+        if (!project) {
+            return [(0, PomModel_1.makeInfoItem)(this.noPomMessage)];
+        }
+        const entries = (0, PomModel_1.collect)(project, this.section);
+        if (entries.length === 0) {
+            return [(0, PomModel_1.makeInfoItem)(this.emptyMessage)];
+        }
+        return entries.map(e => new PomModel_1.PomEntryItem(e, this.iconFor(e)));
+    }
+    /** Por defecto el icono de la sección; las dependencias lo afinan por scope. */
+    iconFor(_entry) {
+        return new vscode.ThemeIcon(this.icon);
+    }
+}
+//  Plugins
+class MavenPluginsProvider extends PomSectionProvider {
+    constructor() {
+        super(...arguments);
+        this.section = 'plugins';
+        this.icon = 'extensions';
+        this.emptyMessage = 'No plugins configured';
+        this.noPomMessage = 'Open a pom.xml to see plugins';
     }
 }
 exports.MavenPluginsProvider = MavenPluginsProvider;
-//  Managed Plugins Provider 
-class MavenManagedPluginsProvider {
+class MavenManagedPluginsProvider extends PomSectionProvider {
     constructor() {
-        this._onDidChangeTreeData = new vscode.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-    }
-    refresh() { this._onDidChangeTreeData.fire(); }
-    getTreeItem(e) { return e; }
-    getChildren() {
-        const text = readActivePom();
-        if (!text) {
-            return [makeInfoItem('Open a pom.xml to see managed plugins')];
-        }
-        const section = extractManagedSection(text, 'pluginManagement', 'plugins');
-        return parsePlugins(section) || [makeInfoItem('No managed plugins configured')];
+        super(...arguments);
+        this.section = 'managedPlugins';
+        this.icon = 'extensions';
+        this.emptyMessage = 'No managed plugins configured';
+        this.noPomMessage = 'Open a pom.xml to see managed plugins';
     }
 }
 exports.MavenManagedPluginsProvider = MavenManagedPluginsProvider;
-//  Dependencies Provider 
-class MavenDependenciesProvider {
+//  Dependencies
+class DependencyProvider extends PomSectionProvider {
     constructor() {
-        this._onDidChangeTreeData = new vscode.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
+        super(...arguments);
+        this.icon = 'library';
     }
-    refresh() { this._onDidChangeTreeData.fire(); }
-    getTreeItem(e) { return e; }
-    getChildren() {
-        const text = readActivePom();
-        if (!text) {
-            return [makeInfoItem('Open a pom.xml to see dependencies')];
-        }
-        // Only dependencies outside <dependencyManagement>
-        const section = extractSection(text, 'dependencies', 'dependencyManagement');
-        return parseDependencies(section) || [makeInfoItem('No dependencies declared')];
+    iconFor(entry) {
+        // El scope viaja dentro del valor mostrado, entre corchetes
+        const value = entry.base?.value ?? entry.profiles[0]?.value ?? '';
+        const scope = (value.match(/\[([^\]]+)\]/) || [])[1] ?? 'compile';
+        return scopeIcon(scope);
+    }
+}
+class MavenDependenciesProvider extends DependencyProvider {
+    constructor() {
+        super(...arguments);
+        this.section = 'dependencies';
+        this.emptyMessage = 'No dependencies declared';
+        this.noPomMessage = 'Open a pom.xml to see dependencies';
     }
 }
 exports.MavenDependenciesProvider = MavenDependenciesProvider;
-//  Managed Dependencies Provider 
-class MavenManagedDependenciesProvider {
+class MavenManagedDependenciesProvider extends DependencyProvider {
     constructor() {
-        this._onDidChangeTreeData = new vscode.EventEmitter();
-        this.onDidChangeTreeData = this._onDidChangeTreeData.event;
-    }
-    refresh() { this._onDidChangeTreeData.fire(); }
-    getTreeItem(e) { return e; }
-    getChildren() {
-        const text = readActivePom();
-        if (!text) {
-            return [makeInfoItem('Open a pom.xml to see managed dependencies')];
-        }
-        const section = extractManagedSection(text, 'dependencyManagement', 'dependencies');
-        return parseDependencies(section) || [makeInfoItem('No managed dependencies declared')];
+        super(...arguments);
+        this.section = 'managedDependencies';
+        this.emptyMessage = 'No managed dependencies declared';
+        this.noPomMessage = 'Open a pom.xml to see managed dependencies';
     }
 }
 exports.MavenManagedDependenciesProvider = MavenManagedDependenciesProvider;
-//  Parsers 
-function parsePlugins(section) {
-    const items = [];
-    const re = /<plugin>([\s\S]*?)<\/plugin>/g;
-    let m;
-    while ((m = re.exec(section)) !== null) {
-        const block = m[1];
-        const g = (block.match(/<groupId>([^<]+)/) || [])[1] || 'org.apache.maven.plugins';
-        const a = (block.match(/<artifactId>([^<]+)/) || [])[1] || '?';
-        const v = (block.match(/<version>([^<]+)/) || [])[1] || '(managed)';
-        const item = new vscode.TreeItem(a, vscode.TreeItemCollapsibleState.None);
-        item.description = v;
-        item.tooltip = `${g}:${a}:${v}`;
-        item.iconPath = new vscode.ThemeIcon('extensions');
-        items.push(item);
-    }
-    return items.length > 0 ? items : null;
-}
-function parseDependencies(section) {
-    const items = [];
-    const re = /<dependency>([\s\S]*?)<\/dependency>/g;
-    let m;
-    while ((m = re.exec(section)) !== null) {
-        const block = m[1];
-        const g = (block.match(/<groupId>([^<]+)/) || [])[1] || '';
-        const a = (block.match(/<artifactId>([^<]+)/) || [])[1] || '?';
-        const v = (block.match(/<version>([^<]+)/) || [])[1] || '(managed)';
-        const s = (block.match(/<scope>([^<]+)/) || [])[1] || 'compile';
-        const item = new vscode.TreeItem(a, vscode.TreeItemCollapsibleState.None);
-        item.description = `${v} [${s}]`;
-        item.tooltip = `${g}:${a}:${v}`;
-        item.iconPath = scopeIcon(s);
-        items.push(item);
-    }
-    return items.length > 0 ? items : null;
-}
 function scopeIcon(scope) {
     const icons = {
         compile: 'library', provided: 'server', runtime: 'run',
         test: 'beaker', system: 'warning', import: 'file-symlink-file',
     };
     return new vscode.ThemeIcon(icons[scope] ?? 'library');
-}
-function makeInfoItem(label) {
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon('info');
-    return item;
 }
 //# sourceMappingURL=MavenPluginsProvider.js.map

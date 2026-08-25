@@ -63,10 +63,31 @@ function parseArchetypeCatalog(filePath) {
         return [];
     }
 }
+/**
+ * Filas que se envían al webview de una vez.
+ *
+ * El catálogo de central trae del orden de 70.000 arquetipos. Pintarlos todos
+ * como nodos del DOM cuelga la vista, y volver a hacerlo en cada tecla del
+ * filtro la remata; mandarlos enteros por postMessage son varios MB por envío.
+ * Se filtra en la extensión y solo viaja lo que se ve.
+ */
+const MAX_ROWS = 200;
+/** Coincidencias del filtro, recortadas a lo que se va a pintar. */
+function select(all, filter) {
+    const needle = filter.trim().toLowerCase();
+    const matches = needle
+        ? all.filter(a => `${a.groupId}:${a.artifactId}:${a.version}`.toLowerCase().includes(needle))
+        : all;
+    return { rows: matches.slice(0, MAX_ROWS), matches: matches.length, total: all.length };
+}
 class MavenArchetypesView {
     constructor(context, archetypeRunner) {
         this.context = context;
         this.archetypeRunner = archetypeRunner;
+        /** Catálogos ya leídos. Releerlos en cada envío no aporta nada. */
+        this.local = [];
+        this.global = [];
+        this.loaded = false;
     }
     resolveWebviewView(webviewView, _context, _token) {
         this.webviewView = webviewView;
@@ -77,9 +98,15 @@ class MavenArchetypesView {
                 case 'ready':
                     this.sendArchetypes();
                     break;
+                case 'filter':
+                    this.sendArchetypes(msg.local, msg.global);
+                    break;
                 case 'refresh':
-                    //await this.archetypeRunner.crawlSync();
-                    this.sendArchetypes();
+                    // archetype:crawl reconstruye el catálogo LOCAL recorriendo el
+                    // repositorio. El de central no lo toca: ese se descarga aparte.
+                    await this.archetypeRunner.crawlSync();
+                    this.loaded = false;
+                    this.sendArchetypes(msg.local, msg.global);
                     break;
                 case 'generate':
                     await vscode.commands.executeCommand('gjs-maven-vscode-extension.archetypeGenerate', msg.groupId, msg.artifactId, msg.version);
@@ -97,11 +124,39 @@ class MavenArchetypesView {
             this.sendArchetypes();
         }
     }
-    sendArchetypes() {
+    /** Lee los catálogos una vez; sale con false si aún no se sabe dónde están. */
+    load() {
         const localRepo = MavenProjectContext_1.MavenProjectContext.globalConfig.localRepository;
-        const local = this.existsDir(localRepo) ? parseArchetypeCatalog(path.join(localRepo, 'archetype-catalog.xml')) : [];
-        const global = this.existsDir(localRepo) ? parseArchetypeCatalog(path.join(localRepo, 'archetype-catalog-central.xml')) : [];
-        this.webviewView?.webview.postMessage({ command: 'update', local, global });
+        if (!this.existsDir(localRepo)) {
+            return false;
+        }
+        if (this.loaded) {
+            return true;
+        }
+        this.local = parseArchetypeCatalog(path.join(localRepo, 'archetype-catalog.xml'));
+        this.global = parseArchetypeCatalog(path.join(localRepo, 'archetype-catalog-central.xml'));
+        this.loaded = true;
+        return true;
+    }
+    sendArchetypes(localFilter = '', globalFilter = '') {
+        if (!this.webviewView) {
+            return;
+        }
+        if (!this.load()) {
+            // Sin repositorio local no hay catálogos que leer. Distinguir "aún no
+            // se sabe" de "Maven no pudo decirlo" evita dejar el panel diciendo
+            // que está resolviendo algo que ya falló.
+            this.webviewView.webview.postMessage({
+                command: 'pending',
+                reason: MavenProjectContext_1.MavenProjectContext.globalConfig.localRepositoryError
+            });
+            return;
+        }
+        this.webviewView.webview.postMessage({
+            command: 'update',
+            local: select(this.local, localFilter),
+            global: select(this.global, globalFilter)
+        });
     }
     existsDir(dir) {
         return dir ? fs.existsSync(dir) : false;
@@ -144,69 +199,122 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 <input class="search-box" id="search-global" type="text" placeholder="Filter..." />
 <div class="list" id="global-list"><span class="empty">Loading...</span></div>
 
-<button id="btn-refresh">Refresh</button>
+<button id="btn-refresh" title="Runs archetype:crawl to rebuild the local catalog from the local repository. The central catalog is not touched.">Refresh local catalog</button>
 
 <script nonce="${nonce}">
 const vscode = acquireVsCodeApi();
-let localData  = [];
-let globalData = [];
 
 vscode.postMessage({ command: 'ready' });
 
 window.addEventListener('message', e => {
-    if (e.data.command === 'update') {
-        localData  = e.data.local  || [];
-        globalData = e.data.global || [];
-        renderList('local-list',  'local-count',  localData,  document.getElementById('search-local').value);
-        renderList('global-list', 'global-count', globalData, document.getElementById('search-global').value);
-        document.getElementById('btn-refresh').disabled = false;
-        document.getElementById('btn-refresh').textContent = 'Refresh';
-    }
-});
-
-function renderList(listId, countId, data, filter) {
-    const list = document.getElementById(listId);
-    const filtered = filter
-        ? data.filter(a => (a.groupId + ':' + a.artifactId + ':' + a.version).toLowerCase().includes(filter.toLowerCase()))
-        : data;
-    document.getElementById(countId).textContent = '(' + filtered.length + ')';
-    if (filtered.length === 0) {
-        list.innerHTML = '<span class="empty">' + (data.length === 0 ? 'No archetypes found' : 'No matches') + '</span>';
+    if (e.data.command === 'pending') {
+        setBusy(false);
+        const text = e.data.reason
+            ? 'Maven could not resolve the local repository: ' + e.data.reason
+            : 'Resolving the local repository...';
+        setMessage('local-list',  'local-count',  text);
+        setMessage('global-list', 'global-count', text);
         return;
     }
-    list.innerHTML = filtered.map((a, i) =>
-        '<div class="item" data-index="' + i + '" data-group="' + esc(a.groupId) + '" data-artifact="' + esc(a.artifactId) + '" data-version="' + esc(a.version) + '" title="' + esc(a.groupId + ':' + a.artifactId + ':' + a.version) + '">' +
-            esc(a.groupId + ':' + a.artifactId + ':' + a.version) +
-        '</div>'
-    ).join('');
-    list.querySelectorAll('.item').forEach(function(el) {
-        el.addEventListener('dblclick', function() {
-            vscode.postMessage({
-                command: 'generate',
-                groupId:    el.getAttribute('data-group'),
-                artifactId: el.getAttribute('data-artifact'),
-                version:    el.getAttribute('data-version')
-            });
-        });
-        el.addEventListener('click', function() {
-            list.querySelectorAll('.item').forEach(i => i.classList.remove('selected'));
-            el.classList.add('selected');
+    if (e.data.command !== 'update') { return; }
+    renderList('local-list',  'local-count',  e.data.local);
+    renderList('global-list', 'global-count', e.data.global);
+    setBusy(false);
+});
+
+function filters() {
+    return {
+        local:  document.getElementById('search-local').value,
+        global: document.getElementById('search-global').value
+    };
+}
+
+// El filtrado lo hace la extensión: el catálogo de central ronda los 70.000
+// arquetipos y ni cabe cómodamente en un postMessage ni se puede pintar entero.
+let pending = null;
+function requestFilter() {
+    clearTimeout(pending);
+    pending = setTimeout(function () {
+        const f = filters();
+        vscode.postMessage({ command: 'filter', local: f.local, global: f.global });
+    }, 150);
+}
+
+function setMessage(listId, countId, text) {
+    document.getElementById(countId).textContent = '';
+    document.getElementById(listId).innerHTML = '<span class="empty">' + esc(text) + '</span>';
+}
+
+function renderList(listId, countId, data) {
+    const list = document.getElementById(listId);
+    const count = document.getElementById(countId);
+
+    if (!data || data.total === 0) {
+        setMessage(listId, countId, 'No archetypes found');
+        return;
+    }
+    if (data.matches === 0) {
+        setMessage(listId, countId, 'No matches (' + data.total + ' available)');
+        return;
+    }
+
+    // Decir cuántos hay de verdad, no cuántos caben
+    count.textContent = data.matches > data.rows.length
+        ? '(' + data.rows.length + ' of ' + data.matches + ' — refine the filter)'
+        : '(' + data.matches + ')';
+
+    list.innerHTML = data.rows.map(function (a) {
+        const coords = a.groupId + ':' + a.artifactId + ':' + a.version;
+        return '<div class="item" data-group="' + esc(a.groupId) + '" data-artifact="' + esc(a.artifactId) +
+               '" data-version="' + esc(a.version) + '" title="' + esc(coords) + '">' + esc(coords) + '</div>';
+    }).join('');
+}
+
+/**
+ * Un único listener por lista, no uno por fila.
+ *
+ * Se enganchaban dos por fila y se rehacían en cada filtrado: con el tope de
+ * filas son 400 registros cada vez que tecleas. Con delegación se enganchan dos
+ * en total, al arrancar, y sobreviven a cualquier reescritura del innerHTML.
+ */
+function wireList(listId) {
+    const list = document.getElementById(listId);
+
+    list.addEventListener('click', function (e) {
+        const el = e.target.closest('.item');
+        if (!el) { return; }
+        list.querySelectorAll('.item.selected').forEach(i => i.classList.remove('selected'));
+        el.classList.add('selected');
+    });
+
+    list.addEventListener('dblclick', function (e) {
+        const el = e.target.closest('.item');
+        if (!el) { return; }
+        vscode.postMessage({
+            command: 'generate',
+            groupId:    el.getAttribute('data-group'),
+            artifactId: el.getAttribute('data-artifact'),
+            version:    el.getAttribute('data-version')
         });
     });
 }
 
-document.getElementById('search-local').addEventListener('input', function() {
-    renderList('local-list', 'local-count', localData, this.value);
-});
+wireList('local-list');
+wireList('global-list');
 
-document.getElementById('search-global').addEventListener('input', function() {
-    renderList('global-list', 'global-count', globalData, this.value);
-});
+function setBusy(busy) {
+    const btn = document.getElementById('btn-refresh');
+    btn.disabled = busy;
+    btn.textContent = busy ? 'Running archetype:crawl...' : 'Refresh local catalog';
+}
 
-document.getElementById('btn-refresh').addEventListener('click', function() {
-    this.disabled = true;
-    this.textContent = 'Running archetype:crawl...';
-    vscode.postMessage({ command: 'refresh' });
+document.getElementById('search-local').addEventListener('input', requestFilter);
+document.getElementById('search-global').addEventListener('input', requestFilter);
+
+document.getElementById('btn-refresh').addEventListener('click', function () {
+    setBusy(true);
+    const f = filters();
+    vscode.postMessage({ command: 'refresh', local: f.local, global: f.global });
 });
 
 function esc(s) {

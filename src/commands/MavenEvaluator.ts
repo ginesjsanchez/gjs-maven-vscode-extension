@@ -10,7 +10,12 @@ export class MavenEvaluator {
     ) {}
 
     async evaluate(expression: string, projectDir: string): Promise<string | undefined> {
-		return this.runner.runToString(`help:evaluate -Dexpression=${expression} -q -DforceStdout`, projectDir )
+		return this.runner.runToString(`help:evaluate -Dexpression="${expression}" -q -DforceStdout`, projectDir )
+    }
+
+	/** Igual que evaluate, pero sin abrir terminal ni escribir en target/. */
+    async evaluateSilent(expression: string, projectDir: string): Promise<string | undefined> {
+		return this.runner.runToStringSilent(`help:evaluate -Dexpression="${expression}" -q -DforceStdout`, projectDir )
     }
 
     async runInteractive(projectDir: string): Promise<void> {
@@ -44,6 +49,7 @@ export class MavenEvaluator {
     private static getOutputChannel(): vscode.OutputChannel {
         if (!MavenEvaluator._channel) {
             MavenEvaluator._channel = vscode.window.createOutputChannel('Maven Evaluate');
+			MavenEvaluator._channel.show(true);
         }
         return MavenEvaluator._channel;
     }
